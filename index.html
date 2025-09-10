@@ -52,11 +52,11 @@
     async function start() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" } // артқы камераны таңдау
+          video: { facingMode: "environment" }
         });
         video.srcObject = stream;
 
-        video.addEventListener('loadeddata', () => {
+        video.addEventListener('loadedmetadata', () => {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
         });
@@ -69,14 +69,18 @@
     }
 
     async function detectFrame(video, model) {
+      // Егер video өлшемі өзгерсе → canvas-қа қайта теңестір
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      }
+
       const predictions = await model.detect(video);
 
-      // Видео кадрын салу
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       let sheepCount = 0;
 
-      // Қойларды іздеу
       predictions.forEach(p => {
         if (p.class === 'sheep' && p.score > 0.6) {
           sheepCount++;
@@ -89,7 +93,6 @@
         }
       });
 
-      // Санын шығару
       countDiv.innerText = "Қой саны: " + sheepCount;
 
       requestAnimationFrame(() => detectFrame(video, model));
