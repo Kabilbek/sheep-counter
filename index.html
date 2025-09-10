@@ -31,11 +31,18 @@
       border-radius: 8px;
       z-index: 2;
     }
+    /* Видео көрінбейді, бірақ өлшемі есептеледі */
+    #video {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+    }
   </style>
 </head>
 <body>
-  <!-- Камера (көрсетілмейді) -->
-  <video id="video" autoplay playsinline muted style="display:none;"></video>
+  <!-- Камера (көрінбейді, тек дереккөз ретінде) -->
+  <video id="video" autoplay playsinline muted></video>
 
   <!-- Негізгі экран -->
   <canvas id="canvas"></canvas>
@@ -69,31 +76,31 @@
     }
 
     async function detectFrame(video, model) {
-      // Егер video өлшемі өзгерсе → canvas-қа қайта теңестір
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-      }
-
-      const predictions = await model.detect(video);
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      let sheepCount = 0;
-
-      predictions.forEach(p => {
-        if (p.class === 'sheep' && p.score > 0.6) {
-          sheepCount++;
-          ctx.strokeStyle = 'lime';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
-          ctx.fillStyle = 'lime';
-          ctx.font = "18px Arial";
-          ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 5 : 20);
+      if (video.videoWidth && video.videoHeight) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
         }
-      });
 
-      countDiv.innerText = "Қой саны: " + sheepCount;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const predictions = await model.detect(video);
+
+        let sheepCount = 0;
+        predictions.forEach(p => {
+          if (p.class === 'sheep' && p.score > 0.6) {
+            sheepCount++;
+            ctx.strokeStyle = 'lime';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
+            ctx.fillStyle = 'lime';
+            ctx.font = "18px Arial";
+            ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 5 : 20);
+          }
+        });
+
+        countDiv.innerText = "Қой саны: " + sheepCount;
+      }
 
       requestAnimationFrame(() => detectFrame(video, model));
     }
