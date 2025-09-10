@@ -36,7 +36,7 @@
     const totalDiv = document.getElementById('total');
 
     let totalSheep = 0;
-    let passedSheep = []; // сызықтан өткен қойлар
+    let passedSheep = [];
 
     async function start() {
       try {
@@ -65,13 +65,8 @@
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const predictions = await model.detect(video);
 
-      // Вертикаль сызық (экран ортасында)
-      const lineX = canvas.width / 2;
-      ctx.strokeStyle = "red";
-      ctx.beginPath();
-      ctx.moveTo(lineX, 0);
-      ctx.lineTo(lineX, canvas.height);
-      ctx.stroke();
+      // "сызық" жоғарғы жағында (биіктіктің 20% жерінде)
+      const lineY = canvas.height * 0.2;
 
       predictions.forEach(p => {
         if (p.class === 'sheep' && p.score > 0.6) {
@@ -85,8 +80,8 @@
           ctx.font = "18px Arial";
           ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 5 : 20);
 
-          // Егер қой вертикаль сызықты кесіп өтсе
-          if (cx > lineX - 5 && cx < lineX + 5) {
+          // қойдың ортасы сызықтан өткен кезде санау
+          if (cy < lineY + 5 && cy > lineY - 5) {
             let alreadyCounted = passedSheep.some(([x, y]) =>
               Math.abs(x - cx) < 50 && Math.abs(y - cy) < 50
             );
