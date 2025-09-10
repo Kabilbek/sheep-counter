@@ -1,96 +1,98 @@
 <!DOCTYPE html>
 <html lang="kk">
-<head>
-  <meta charset="UTF-8">
-  <title>Қой саны</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-    video, canvas {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: contain; /* contain → жақындатпайды, cover → экранды толық жабады */
-    }
-    #count {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(255,255,255,0.8);
-      padding: 6px 12px;
-      font-size: 20px;
-      font-family: sans-serif;
-      border-radius: 10px;
-    }
-  </style>
-</head>
-<body>
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
-  <div id="count">Қой саны: 0</div>
-
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const countDiv = document.getElementById('count');
-
-    // Canvas өлшемін терезеге сай қыламыз
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    async function start() {
-      try {
-        // Артқы камераны қолдану
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: "environment" } }
-        });
-        video.srcObject = stream;
-
-        // Модельді жүктеу
-        const model = await cocoSsd.load();
-        detectFrame(video, model);
-      } catch (err) {
-        console.error("Камераға қол жеткізу мүмкін болмады:", err);
+  <head>
+    <meta charset="UTF-8">
+    <title>Қой саны</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+      body, html {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100%;
+        width: 100%;
       }
-    }
+      video, canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      #count {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: white;
+        padding: 5px 10px;
+        font-size: 20px;
+        border-radius: 8px;
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Камера -->
+    <video id="video" autoplay playsinline muted
+      style="width: 100%; height: 100%; object-fit: cover; z-index: -1;">
+    </video>
 
-    async function detectFrame(video, model) {
-      const predictions = await model.detect(video);
+    <!-- Бояу үшін -->
+    <canvas id="canvas" style="z-index: 1; pointer-events: none;"></canvas>
 
-      // Экранды тазалау
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    <!-- Сан -->
+    <div id="count">Қой саны: 0</div>
 
-      let sheepCount = 0;
+    <script>
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const countDiv = document.getElementById('count');
 
-      predictions.forEach(p => {
-        if (p.class === 'sheep' && p.score > 0.6) {
-          sheepCount++;
-          ctx.strokeStyle = 'green';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(...p.bbox);
-          ctx.fillStyle = 'green';
-          ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
+      async function start() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: "environment" } } // артқы камера
+          });
+          video.srcObject = stream;
+
+          // Видео дайын болғанда canvas өлшемін теңестіру
+          video.addEventListener('loadeddata', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          });
+
+          const model = await cocoSsd.load();
+          detectFrame(video, model);
+        } catch (err) {
+          alert("Камераны ашу мүмкін болмады: " + err);
         }
-      });
+      }
 
-      countDiv.innerText = "Қой саны: " + sheepCount;
+      async function detectFrame(video, model) {
+        const predictions = await model.detect(video);
 
-      requestAnimationFrame(() => detectFrame(video, model));
-    }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    start();
-  </script>
-</body>
+        let sheepCount = 0;
+
+        predictions.forEach(p => {
+          if (p.class === 'sheep' && p.score > 0.6) {
+            sheepCount++;
+            ctx.strokeStyle = 'green';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
+            ctx.fillStyle = 'green';
+            ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
+          }
+        });
+
+        countDiv.innerText = "Қой саны: " + sheepCount;
+
+        requestAnimationFrame(() => detectFrame(video, model));
+      }
+
+      start();
+    </script>
+  </body>
 </html>
