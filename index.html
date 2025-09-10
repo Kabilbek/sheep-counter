@@ -12,6 +12,7 @@
       overflow: hidden;
       height: 100%;
       width: 100%;
+      background: black;
     }
     canvas {
       position: fixed;
@@ -51,7 +52,7 @@
     async function start() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: "environment" } } // артқы камера
+          video: { facingMode: "environment" } // артқы камераны таңдау
         });
         video.srcObject = stream;
 
