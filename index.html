@@ -34,7 +34,7 @@
       const countDiv = document.getElementById('count');
 
       async function start() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } })
         video.srcObject = stream;
 
         const model = await cocoSsd.load();
@@ -68,3 +68,4 @@
   </body>
 
 </html>
+
