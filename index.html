@@ -1,98 +1,100 @@
 <!DOCTYPE html>
 <html lang="kk">
-  <head>
-    <meta charset="UTF-8">
-    <title>Қой саны</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-    <style>
-      body, html {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        height: 100%;
-        width: 100%;
-      }
-      video, canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-      }
-      #count {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background: white;
-        padding: 5px 10px;
-        font-size: 20px;
-        border-radius: 8px;
-        z-index: 2;
-      }
-    </style>
-  </head>
-  <body>
-    <!-- Камера -->
-    <video id="video" autoplay playsinline muted
-      style="width: 100%; height: 100%; object-fit: cover; z-index: -1;">
-    </video>
+<head>
+  <meta charset="UTF-8">
+  <title>Қой саны</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+    }
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #count {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 5px 10px;
+      font-size: 20px;
+      border-radius: 8px;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <!-- Камера (көрсетілмейді) -->
+  <video id="video" autoplay playsinline muted style="display:none;"></video>
 
-    <!-- Бояу үшін -->
-    <canvas id="canvas" style="z-index: 1; pointer-events: none;"></canvas>
+  <!-- Негізгі экран -->
+  <canvas id="canvas"></canvas>
 
-    <!-- Сан -->
-    <div id="count">Қой саны: 0</div>
+  <!-- Қой саны -->
+  <div id="count">Қой саны: 0</div>
 
-    <script>
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const countDiv = document.getElementById('count');
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const countDiv = document.getElementById('count');
 
-      async function start() {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { exact: "environment" } } // артқы камера
-          });
-          video.srcObject = stream;
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: "environment" } } // артқы камера
+        });
+        video.srcObject = stream;
 
-          // Видео дайын болғанда canvas өлшемін теңестіру
-          video.addEventListener('loadeddata', () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-          });
-
-          const model = await cocoSsd.load();
-          detectFrame(video, model);
-        } catch (err) {
-          alert("Камераны ашу мүмкін болмады: " + err);
-        }
-      }
-
-      async function detectFrame(video, model) {
-        const predictions = await model.detect(video);
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        let sheepCount = 0;
-
-        predictions.forEach(p => {
-          if (p.class === 'sheep' && p.score > 0.6) {
-            sheepCount++;
-            ctx.strokeStyle = 'green';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
-            ctx.fillStyle = 'green';
-            ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
-          }
+        video.addEventListener('loadeddata', () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
         });
 
-        countDiv.innerText = "Қой саны: " + sheepCount;
-
-        requestAnimationFrame(() => detectFrame(video, model));
+        const model = await cocoSsd.load();
+        detectFrame(video, model);
+      } catch (err) {
+        alert("Камераны ашу мүмкін болмады: " + err);
       }
+    }
 
-      start();
-    </script>
-  </body>
+    async function detectFrame(video, model) {
+      const predictions = await model.detect(video);
+
+      // Видео кадрын салу
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      let sheepCount = 0;
+
+      // Қойларды іздеу
+      predictions.forEach(p => {
+        if (p.class === 'sheep' && p.score > 0.6) {
+          sheepCount++;
+          ctx.strokeStyle = 'lime';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
+          ctx.fillStyle = 'lime';
+          ctx.font = "18px Arial";
+          ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 5 : 20);
+        }
+      });
+
+      // Санын шығару
+      countDiv.innerText = "Қой саны: " + sheepCount;
+
+      requestAnimationFrame(() => detectFrame(video, model));
+    }
+
+    start();
+  </script>
+</body>
 </html>
