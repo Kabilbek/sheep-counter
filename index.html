@@ -40,10 +40,9 @@
     const totalDiv = document.getElementById('total');
 
     let totalSheep = 0;
-    let trackedSheep = []; // бұрыннан бар қойлардың тізімі
+    let trackedSheep = []; // барлық бұрыннан белгілі қойлар
 
     function iou(box1, box2) {
-      // box = [x, y, width, height]
       const x1 = Math.max(box1[0], box2[0]);
       const y1 = Math.max(box1[1], box2[1]);
       const x2 = Math.min(box1[0] + box1[2], box2[0] + box2[2]);
@@ -54,7 +53,7 @@
       const area2 = box2[2] * box2[3];
       const union = area1 + area2 - intersection;
 
-      return intersection / union;
+      return union > 0 ? intersection / union : 0;
     }
 
     async function start() {
@@ -86,12 +85,12 @@
         if (p.class === 'sheep' && p.score > 0.6) {
           currentSheep.push(p.bbox);
 
-          // Бұрынғы қойлармен салыстыру
+          // Бұрыннан бар ма тексереміз
           let matched = trackedSheep.some(oldBox => iou(oldBox, p.bbox) > 0.5);
 
           if (!matched) {
             totalSheep++;
-            trackedSheep.push(p.bbox);
+            trackedSheep.push(p.bbox); // жаңа қойды есте сақтаймыз
           }
 
           // Төртбұрыш салу
@@ -104,7 +103,7 @@
         }
       });
 
-      // Тек қазір көрініп тұрған қойлар
+      // Экрандағы сандарды жаңарту
       countDiv.innerText = "Қазір кадрда: " + currentSheep.length;
       totalDiv.innerText = "Жалпы саны: " + totalSheep;
 
