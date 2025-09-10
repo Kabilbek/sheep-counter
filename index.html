@@ -1,294 +1,109 @@
 <!DOCTYPE html>
 <html lang="kk">
 <head>
-  <meta charset="utf-8" />
-  <title>Қой саны — Бір рет санау</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <meta charset="UTF-8">
+  <title>Қойларды санау</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
   <style>
-    html,body{height:100%;margin:0;background:black}
-    /* Видоеро көрінбейді — тек дереккөз ретінде қолданамыз */
-    #video { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
-    /* Canvas экранды толық толтырады (CSS масштабтау) */
-    #canvas { position:fixed; top:0; left:0; width:100%; height:100%; display:block; }
-    /* Ақпарат (сан) */
-    #ui {
-      position:fixed; left:10px; top:10px; z-index:5;
-      display:flex; flex-direction:column; gap:8px;
-      font-family:sans-serif;
+    body { margin: 0; overflow: hidden; }
+    video, canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
     }
-    .badge {
-      background: rgba(255,255,255,0.9);
-      padding:6px 10px; border-radius:8px; font-size:18px;
+    #total {
+      position: absolute;
+      top: 10px; left: 10px;
+      background: rgba(255,255,255,0.8);
+      padding: 6px 12px;
+      font-size: 22px;
+      font-family: sans-serif;
+      border-radius: 10px;
     }
-    #controls { display:flex; gap:8px; margin-top:6px; }
-    button { padding:6px 10px; border-radius:8px; border:none; background:#1976d2; color:white; }
-    button.secondary { background:#777; }
   </style>
 </head>
 <body>
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
+  <div id="total">Жалпы қой саны: 0</div>
 
-  <div id="ui">
-    <div id="live" class="badge">Қазір кадрда: 0</div>
-    <div id="total" class="badge">Жалпы саны (бір рет): 0</div>
-    <div id="controls">
-      <button id="resetBtn" class="secondary">Жалпыны тазалау</button>
-      <button id="clearMemory" class="secondary">Еске сақтау жой</button>
-    </div>
-  </div>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const totalDiv = document.getElementById('total');
 
-<script>
-(async function(){
-  // Элементтер
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d', { alpha:false });
-  const liveEl = document.getElementById('live');
-  const totalEl = document.getElementById('total');
-  const resetBtn = document.getElementById('resetBtn');
-  const clearMemoryBtn = document.getElementById('clearMemory');
+    let totalSheep = 0;
+    let passedSheep = []; // сызықтан өткен қойлар
 
-  // Трекер және санау
-  let tracked = []; // әр объект: {id, bbox, centroid, color, firstSeen, lastSeen, seenCount}
-  let nextId = 1;
-  let totalSheep = 0;
-
-  // Параметрлер — қажет болса өзгертіңіз
-  const IOU_THRESHOLD = 0.35;      // IoU бойынша сәйкес деп санау шегі
-  const DIST_RATIO = 1.0;          // нормализацияға арналған коэффициент (bbox max dim бойынша)
-  const COLOR_DIST_TH = 60;        // түс ұқсастығы бойынша шек (RGB қашықтық)
-  const SAMPLE_STEP = 4;           // түс алу үшін пиксельдерді секірту (0-ке жақын → баяу, бірақ дәлірек)
-
-  // localStorage арқылы есте сақтау (опция)
-  const STORAGE_KEY = 'sheep_tracker_memory_v1';
-  function saveMemory(){
-    try{
-      const dump = tracked.map(t => ({ id: t.id, centroid: t.centroid, color: t.color }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dump));
-    }catch(e){ console.warn('Save memory failed',e); }
-  }
-  function loadMemory(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return;
-      const arr = JSON.parse(raw);
-      arr.forEach(a => {
-        tracked.push({
-          id: a.id,
-          bbox: [a.centroid[0]-20, a.centroid[1]-20, 40, 40], // approximate bbox
-          centroid: a.centroid,
-          color: a.color || [128,128,128],
-          firstSeen: Date.now(),
-          lastSeen: Date.now(),
-          seenCount: 1
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }
         });
-        nextId = Math.max(nextId, a.id+1);
-      });
-      totalSheep = tracked.length;
-      updateUI(0);
-    }catch(e){ console.warn('Load memory failed',e); }
-  }
+        video.srcObject = stream;
 
-  // Утилиттер
-  function iou(box1, box2){
-    const x1 = Math.max(box1[0], box2[0]);
-    const y1 = Math.max(box1[1], box2[1]);
-    const x2 = Math.min(box1[0]+box1[2], box2[0]+box2[2]);
-    const y2 = Math.min(box1[1]+box1[3], box2[1]+box2[3]);
-    const inter = Math.max(0, x2-x1) * Math.max(0, y2-y1);
-    const a1 = box1[2]*box1[3], a2 = box2[2]*box2[3];
-    const union = a1 + a2 - inter;
-    return union>0 ? inter/union : 0;
-  }
+        video.addEventListener('loadedmetadata', () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        });
 
-  function centroidOf(box){
-    return [box[0] + box[2]/2, box[1] + box[3]/2];
-  }
-
-  function colorDist(c1, c2){
-    // Euclidean distance in RGB
-    const dr = c1[0]-c2[0], dg = c1[1]-c2[1], db = c1[2]-c2[2];
-    return Math.sqrt(dr*dr + dg*dg + db*db);
-  }
-
-  function blendColor(cOld, cNew){
-    return [
-      Math.round((cOld[0]*0.7 + cNew[0]*0.3)),
-      Math.round((cOld[1]*0.7 + cNew[1]*0.3)),
-      Math.round((cOld[2]*0.7 + cNew[2]*0.3))
-    ];
-  }
-
-  // Түсті алу — bbox ішінде орташа цвет (көбірек sampling → баяу)
-  function getAvgColorFromCanvas(box){
-    const x = Math.max(0, Math.floor(box[0]));
-    const y = Math.max(0, Math.floor(box[1]));
-    const w = Math.max(1, Math.floor(Math.min(box[2], canvas.width - x)));
-    const h = Math.max(1, Math.floor(Math.min(box[3], canvas.height - y)));
-    try{
-      const img = ctx.getImageData(x, y, w, h).data;
-      let r=0,g=0,b=0, count=0;
-      for(let yy=0; yy<h; yy+=SAMPLE_STEP){
-        for(let xx=0; xx<w; xx+=SAMPLE_STEP){
-          const idx = (yy*w + xx)*4;
-          r += img[idx]; g += img[idx+1]; b += img[idx+2]; count++;
-        }
+        const model = await cocoSsd.load();
+        detectFrame(video, model);
+      } catch (err) {
+        alert("Камера ашылмады: " + err);
       }
-      if(count===0) return [128,128,128];
-      return [ Math.round(r/count), Math.round(g/count), Math.round(b/count) ];
-    }catch(e){
-      return [128,128,128];
     }
-  }
 
-  // UI жаңарту
-  function updateUI(currentCount){
-    liveEl.innerText = "Қазір кадрда: " + currentCount;
-    totalEl.innerText = "Жалпы саны (бір рет): " + totalSheep;
-  }
+    function getCenter(bbox) {
+      return [bbox[0] + bbox[2] / 2, bbox[1] + bbox[3] / 2];
+    }
 
-  // Сервер/камера бастау
-  async function startCameraAndModel(){
-    try{
-      // Камера ашу (environment — артқы)
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      video.srcObject = stream;
+    async function detectFrame(video, model) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const predictions = await model.detect(video);
 
-      // Видео метадата келгенде canvas нақты өлшемін видеоға қой
-      await new Promise(resolve => {
-        video.onloadedmetadata = () => {
-          // canvas пиксель өлшемін видеоның шынайы өлшеміне орнатамыз
-          canvas.width = video.videoWidth || window.innerWidth;
-          canvas.height = video.videoHeight || window.innerHeight;
-          resolve();
-        };
-      });
+      // Сызық (экран ортасында)
+      const lineY = canvas.height / 2;
+      ctx.strokeStyle = "red";
+      ctx.beginPath();
+      ctx.moveTo(0, lineY);
+      ctx.lineTo(canvas.width, lineY);
+      ctx.stroke();
 
-      // Модель жүктеу
-      const model = await cocoSsd.load();
-      // Бастапқы жадыны жүктеу
-      loadMemory();
+      predictions.forEach(p => {
+        if (p.class === 'sheep' && p.score > 0.6) {
+          const [cx, cy] = getCenter(p.bbox);
 
-      // Басты цикл
-      async function frameLoop(){
-        // Видео кадрын canvas-қа салу (бұл – detection пен color үшін қажет)
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // қойға төртбұрыш салу
+          ctx.strokeStyle = 'green';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]);
+          ctx.fillStyle = 'green';
+          ctx.font = "18px Arial";
+          ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 5 : 20);
 
-        // Детекция
-        let preds = [];
-        try { preds = await model.detect(video); } catch(e){ /* модель кейде қателейді */ }
-
-        // Қазір кадрда көрінген қойдар id-лері
-        const currentIds = new Set();
-
-        // Детекцияларды өңдеу
-        for(const p of preds){
-          if(p.class !== 'sheep' || p.score < 0.45) continue; // қозғалыс/сенімділік шегін өзіңіз реттеңіз
-
-          const bbox = [p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]];
-          const ctr = centroidOf(bbox);
-          const color = getAvgColorFromCanvas(bbox);
-
-          // Идея: ең жақсы сәйкестікті іздеу tracked-тармен
-          let best = null;
-          let bestScore = -1;
-
-          for(const t of tracked){
-            // IoU
-            const i = iou(t.bbox, bbox);
-            // орталықтық қашықтық (нормаланған)
-            const dist = Math.hypot(t.centroid[0]-ctr[0], t.centroid[1]-ctr[1]);
-            const norm = Math.max(bbox[2], bbox[3]) * DIST_RATIO;
-            const dscore = 1 - Math.min(1, dist / (norm || 1));
-            // түс ұқсастығы (кіші болса жақсы)
-            const cd = colorDist(t.color, color);
-            const cscore = 1 - Math.min(1, cd / 255);
-
-            // Комбинация — IoU басымдылығы жоғарырақ
-            const score = (i * 0.65) + (dscore * 0.25) + (cscore * 0.10);
-
-            if(score > bestScore){
-              bestScore = score;
-              best = t;
+          // Егер қой сызықтан өтсе
+          if (cy > lineY - 5 && cy < lineY + 5) {
+            let alreadyCounted = passedSheep.some(([x, y]) =>
+              Math.abs(x - cx) < 50 && Math.abs(y - cy) < 50
+            );
+            if (!alreadyCounted) {
+              totalSheep++;
+              passedSheep.push([cx, cy]);
             }
           }
+        }
+      });
 
-          // Егер ең жақсы score жеткілікті болса — сәйкес деп қабылдаймыз
-          const MATCH_THRESHOLD = 0.40; // пилоттық мән — қажет жағдайда ұлғайтыңыз/кішігіректеңіз
-          if(best && bestScore >= MATCH_THRESHOLD){
-            // Жаңартып аламыз
-            best.bbox = bbox;
-            best.centroid = ctr;
-            best.color = blendColor(best.color || [128,128,128], color);
-            best.lastSeen = Date.now();
-            best.seenCount = (best.seenCount || 0) + 1;
-            currentIds.add(best.id);
-          } else {
-            // Жаңа қой — жаңа tracked объект
-            const id = nextId++;
-            const obj = {
-              id,
-              bbox,
-              centroid: ctr,
-              color,
-              firstSeen: Date.now(),
-              lastSeen: Date.now(),
-              seenCount: 1
-            };
-            tracked.push(obj);
-            totalSheep++;
-            currentIds.add(id);
-            // Жадқа жазу (опция)
-            saveMemory();
-          }
+      totalDiv.innerText = "Жалпы қой саны: " + totalSheep;
 
-          // Қорап сызу (оқушыларға көрнекілік үшін)
-          ctx.strokeStyle = 'lime';
-          ctx.lineWidth = Math.max(2, Math.round(Math.min(canvas.width, canvas.height) / 300));
-          ctx.strokeRect(bbox[0], bbox[1], bbox[2], bbox[3]);
-          ctx.fillStyle = 'lime';
-          ctx.font = `${Math.max(12, Math.round(Math.min(canvas.width, canvas.height) / 40))}px Arial`;
-          ctx.fillText('Қой', bbox[0], Math.max(14, bbox[1]-4));
-        } // end for preds
-
-        updateUI(currentIds.size);
-
-        requestAnimationFrame(frameLoop);
-      } // end frameLoop
-
-      frameLoop();
-
-    }catch(err){
-      alert('Камераны ашуда қате: ' + err);
+      requestAnimationFrame(() => detectFrame(video, model));
     }
-  } // end startCameraAndModel
 
-  // Reset батырмасы — жалпы санды қайтадан бастау (tracked-ты сақтайды, тек жалпы нөлдейді)
-  resetBtn.addEventListener('click', () => {
-    totalSheep = 0;
-    // tracked қалсын — осылай бұрын көргендер қайта қосылмайды
-    updateUI(0);
-  });
-
-  // Еске сақтау жою (барлығын өшіру)
-  clearMemoryBtn.addEventListener('click', () => {
-    if(confirm('Барлық есте сақталған қойларды жою — бұл әрекет қайтымсыз. Жалғастыру керек пе?')){
-      tracked = [];
-      totalSheep = 0;
-      nextId = 1;
-      localStorage.removeItem(STORAGE_KEY);
-      updateUI(0);
-      alert('Есте сақтау жойылды.');
-    }
-  });
-
-  // Бастау
-  startCameraAndModel();
-
-})();
-</script>
+    start();
+  </script>
 </body>
 </html>
