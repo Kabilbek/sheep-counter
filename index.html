@@ -1,77 +1,96 @@
-﻿<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-    <title>Sheep Counter</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-    <style>
-      video, canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-      }
-      #count {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background: white;
-        padding: 5px 10px;
-        font-size: 20px;
-        border-radius: 8px;
-      }
-    </style>
-  </head>
-  <body>
-    <video id="video" autoplay playsinline muted
-       style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1;">
-        </video>
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8">
+  <title>Қой саны</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    video, canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain; /* contain → жақындатпайды, cover → экранды толық жабады */
+    }
+    #count {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.8);
+      padding: 6px 12px;
+      font-size: 20px;
+      font-family: sans-serif;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="count">Қой саны: 0</div>
 
-    <canvas id="canvas"
-        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;">
-        </canvas>
-    <div id="count">Sheep count: 0</div>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const countDiv = document.getElementById('count');
 
-    <script>
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const countDiv = document.getElementById('count');
+    // Canvas өлшемін терезеге сай қыламыз
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
 
-      async function start() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } })
+    async function start() {
+      try {
+        // Артқы камераны қолдану
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: "environment" } }
+        });
         video.srcObject = stream;
 
+        // Модельді жүктеу
         const model = await cocoSsd.load();
         detectFrame(video, model);
+      } catch (err) {
+        console.error("Камераға қол жеткізу мүмкін болмады:", err);
       }
+    }
 
-      async function detectFrame(video, model) {
-        const predictions = await model.detect(video);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0);
+    async function detectFrame(video, model) {
+      const predictions = await model.detect(video);
 
-        let sheepCount = 0;
+      // Экранды тазалау
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        predictions.forEach(p => {
-          if (p.class === 'sheep' && p.score > 0.6) {
-            sheepCount++;
-            ctx.strokeStyle = 'green';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(...p.bbox);
-            ctx.fillStyle = 'green';
-            ctx.fillText('Sheep', p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
-          }
-        });
+      let sheepCount = 0;
 
-        countDiv.innerText = "Қой саны: " + sheepCount;
-        requestAnimationFrame(() => detectFrame(video, model));
-      }
+      predictions.forEach(p => {
+        if (p.class === 'sheep' && p.score > 0.6) {
+          sheepCount++;
+          ctx.strokeStyle = 'green';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(...p.bbox);
+          ctx.fillStyle = 'green';
+          ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 10 ? p.bbox[1] - 5 : 10);
+        }
+      });
 
-      start();
-    </script>
-  </body>
+      countDiv.innerText = "Қой саны: " + sheepCount;
 
+      requestAnimationFrame(() => detectFrame(video, model));
+    }
+
+    start();
+  </script>
+</body>
 </html>
-
-
