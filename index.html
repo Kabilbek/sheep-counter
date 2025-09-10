@@ -36,7 +36,7 @@
     const totalDiv = document.getElementById('total');
 
     let totalSheep = 0;
-    let passedSheep = [];
+    let sheepTracks = [];
 
     async function start() {
       try {
@@ -65,8 +65,10 @@
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const predictions = await model.detect(video);
 
-      // "сызық" жоғарғы жағында (биіктіктің 20% жерінде)
-      const lineY = canvas.height * 0.2;
+      // Тік сызық – экран ортасында
+      const lineX = canvas.width * 0.5;
+
+      let newTracks = [];
 
       predictions.forEach(p => {
         if (p.class === 'sheep' && p.score > 0.6) {
@@ -80,18 +82,36 @@
           ctx.font = "18px Arial";
           ctx.fillText('Қой', p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 5 : 20);
 
-          // қойдың ортасы сызықтан өткен кезде санау
-          if (cy < lineY + 5 && cy > lineY - 5) {
-            let alreadyCounted = passedSheep.some(([x, y]) =>
-              Math.abs(x - cx) < 50 && Math.abs(y - cy) < 50
-            );
-            if (!alreadyCounted) {
-              totalSheep++;
-              passedSheep.push([cx, cy]);
+          // Ең жақын трекке сәйкестендіру
+          let matched = false;
+          for (let t of sheepTracks) {
+            if (Math.abs(t.x - cx) < 50 && Math.abs(t.y - cy) < 50) {
+              // сызықтан өтуін тексеру (солдан оңға немесе оңнан солға)
+              if (t.x < lineX && cx >= lineX && !t.counted) {
+                totalSheep++;
+                t.counted = true;
+              }
+              if (t.x > lineX && cx <= lineX && !t.counted) {
+                totalSheep++;
+                t.counted = true;
+              }
+              // позицияны жаңарту
+              t.x = cx;
+              t.y = cy;
+              newTracks.push(t);
+              matched = true;
+              break;
             }
+          }
+
+          // Егер жаңа қой болса – жаңа трек ашу
+          if (!matched) {
+            newTracks.push({ x: cx, y: cy, counted: false });
           }
         }
       });
+
+      sheepTracks = newTracks;
 
       totalDiv.innerText = "Жалпы қой саны: " + totalSheep;
 
